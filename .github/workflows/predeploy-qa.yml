@@ -1,0 +1,47 @@
+name: Pre-deploy browser QA
+
+on:
+  push:
+    branches:
+      - agent/predeploy-qa
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout release candidate
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install QA-only browser dependencies
+        run: npm install --no-save playwright@1.47.2 axe-core@4.10.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run existing automated tests
+        run: npm test
+
+      - name: Run syntax checks
+        run: npm run check
+
+      - name: Run browser QA matrix
+        run: node qa/browser-qa.mjs
+
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clearchoice-predeploy-qa
+          path: qa-results/
+          if-no-files-found: warn
+          retention-days: 14

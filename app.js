@@ -1,9 +1,9 @@
 import { deriveOutcome, OUTCOME, OUTCOME_LABELS, validateReopenChange, compatibilityResult } from './lib/decision-engine.js';
-import { loadDecisions, saveDecision, getDecision, deleteDecision, deleteAllDecisions, createBackupPayload, restoreBackupPayload } from './lib/storage.js';
+import { loadDecisions, saveDecision, getDecision, deleteDecision, deleteAllDecisions, createBackupPayload, validateBackupPayload, restoreBackupPayload } from './lib/storage.js';
 import { exportDecisionSheet, exportBackup } from './lib/export.js';
 
 const app = document.querySelector('#app');
-const state = { screen: 'home', activeId: null, volatileDecision: null, dialog: null, message: '' };
+const state = { screen: 'home', activeId: null, volatileDecision: null, dialog: null, dialogReturnFocus: '', message: '' };
 
 const screenNames = { home:'Home', saved:'Salvate', data:'Dati' };
 
@@ -26,12 +26,36 @@ function render(){
 }
 function bindGlobal(){
   document.querySelectorAll('[data-nav]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.nav)));
-  document.querySelectorAll('[data-close-dialog]').forEach(b=>b.addEventListener('click',()=>{state.dialog=null;render();}));
+  document.querySelectorAll('[data-close-dialog]').forEach(b=>b.addEventListener('click',closeDialog));
+  if(state.dialog){ bindDialog(); bindDialogA11y(); }
+}
+function closeDialog(){
+  const returnFocus=state.dialogReturnFocus;
+  state.dialog=null;
+  state.dialogReturnFocus='';
+  render();
+  if(returnFocus) requestAnimationFrame(()=>document.querySelector(returnFocus)?.focus());
+}
+function bindDialogA11y(){
+  const dialog=document.querySelector('[role="dialog"]');
+  if(!dialog)return;
+  const selector='button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+  const focusables=[...dialog.querySelectorAll(selector)].filter(el=>!el.hidden && el.getClientRects().length);
+  const first=focusables[0];
+  const last=focusables[focusables.length-1];
+  first?.focus();
+  dialog.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){ event.preventDefault(); closeDialog(); return; }
+    if(event.key!=='Tab' || !first || !last)return;
+    if(event.shiftKey && document.activeElement===first){ event.preventDefault(); last.focus(); }
+    else if(!event.shiftKey && document.activeElement===last){ event.preventDefault(); first.focus(); }
+  });
 }
 function dialogMarkup(){
   const d=state.dialog;
   if(d.type==='delete') return `<div class="dialog-backdrop"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><h2 id="dialog-title">Eliminare questa decisione?</h2><p>Bozza, revisioni e scheda finale verranno cancellate da questo dispositivo.</p><div class="row"><button class="btn btn-danger" id="confirm-delete">Elimina definitivamente</button><button class="btn btn-secondary" data-close-dialog>Annulla</button></div></section></div>`;
   if(d.type==='delete-all') return `<div class="dialog-backdrop"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><h2 id="dialog-title">Eliminare tutti i dati locali?</h2><p>Questa azione non può essere annullata senza un backup.</p><label class="field"><span>Digita ELIMINA</span><input class="input" id="delete-confirm-text"></label><div class="row"><button class="btn btn-danger" id="confirm-delete-all">Elimina tutti i dati</button><button class="btn btn-secondary" data-close-dialog>Annulla</button></div></section></div>`;
+  if(d.type==='restore') return `<div class="dialog-backdrop"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><h2 id="dialog-title">Ripristinare questo backup?</h2><p>Le decisioni attualmente salvate su questo dispositivo verranno sostituite dai dati del backup.</p><div class="row"><button class="btn btn-primary" id="confirm-restore">Ripristina e sostituisci</button><button class="btn btn-secondary" data-close-dialog>Annulla</button></div></section></div>`;
   return '';
 }
 
@@ -43,9 +67,9 @@ function renderHome(){
 renderHome.bind=()=>{ document.querySelector('#new-decision')?.addEventListener('click',()=>{state.volatileDecision=newDecision();navigate('compatibility');}); bindDecisionCards(); };
 function newDecision(){ return {id:null,title:'',category:'',status:'Draft',currentMoment:1,createdAt:now(),updatedAt:now(),compatibility:{},alternatives:[{id:uid(),label:'',viability:'plausible'},{id:uid(),label:'',viability:'plausible'}],advancementCheck:{changedTypes:[],newElement:'',repeatedElement:'',noSubstantialChange:false},criteria:[],blockerAssessment:{structureIsClear:true,information:{},futureCondition:{},externalSupport:{},tradeoff:{}},finalOutcome:null,revisions:[]}; }
 function decisionCard(d){ return `<article class="card list-item"><div class="list-item-head"><div><strong>${esc(d.title)}</strong><div class="small muted">${d.status==='Draft'?`Bozza · Momento ${d.currentMoment} di 5`:esc(OUTCOME_LABELS[d.finalOutcome?.type]||'Conclusa')}</div></div><span class="status-badge ${d.status==='Completed'?'complete':''}">${d.status==='Draft'?'Bozza':'Conclusa'}</span></div><div class="small muted">Modificata ${fmtDate(d.updatedAt)}</div><div class="list-actions"><button class="btn btn-secondary" data-open="${d.id}">${d.status==='Draft'?'Riprendi':'Apri scheda'}</button><button class="btn btn-text" data-delete="${d.id}">Elimina</button></div></article>`; }
-function bindDecisionCards(){ document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>{const d=getDecision(b.dataset.open);navigate(d.status==='Completed'?'final':momentScreen(d.currentMoment),d.id);})); document.querySelectorAll('[data-delete]').forEach(b=>b.addEventListener('click',()=>{state.dialog={type:'delete',id:b.dataset.delete};render();bindDialog();})); }
+function bindDecisionCards(){ document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>{const d=getDecision(b.dataset.open);navigate(d.status==='Completed'?'final':momentScreen(d.currentMoment),d.id);})); document.querySelectorAll('[data-delete]').forEach(b=>b.addEventListener('click',()=>{state.dialog={type:'delete',id:b.dataset.delete};state.dialogReturnFocus=`[data-delete="${b.dataset.delete}"]`;render();})); }
 function momentScreen(n){ return ({1:'compatibility',2:'advancement',3:'criteria',4:'blocker',5:'final'})[n]||'compatibility'; }
-function bindDialog(){ document.querySelector('#confirm-delete')?.addEventListener('click',()=>{deleteDecision(state.dialog.id);state.dialog=null;flash('Decisione eliminata.');}); document.querySelector('#confirm-delete-all')?.addEventListener('click',()=>{if(document.querySelector('#delete-confirm-text').value==='ELIMINA'){deleteAllDecisions();state.dialog=null;flash('Tutti i dati locali sono stati eliminati.');}}); }
+function bindDialog(){ document.querySelector('#confirm-delete')?.addEventListener('click',()=>{deleteDecision(state.dialog.id);closeDialog();flash('Decisione eliminata.');}); document.querySelector('#confirm-delete-all')?.addEventListener('click',()=>{if(document.querySelector('#delete-confirm-text').value==='ELIMINA'){deleteAllDecisions();closeDialog();flash('Tutti i dati locali sono stati eliminati.');}}); document.querySelector('#confirm-restore')?.addEventListener('click',()=>{const result=restoreBackupPayload(state.dialog.payload);if(result.valid){closeDialog();flash('Dati ripristinati.');}else flash(result.error);}); }
 
 function renderCompatibility(){ const d=current()||newDecision(); const c=d.compatibility||{}; const alts=d.alternatives||[]; return shell(`${sessionHeader('Compatibilità e formulazione')}${momentProgress(1)}<div id="errors"></div><section class="card"><h2>Prima di iniziare</h2><p class="muted">ClearChoice è per decisioni personali, non urgenti e non specialistiche. Finché questo controllo non è superato, nessun testo viene salvato.</p><div class="check-list">${[['individual','La decisione riguarda principalmente me.'],['nonUrgent','Non richiede una risposta immediata.'],['nonSensitive','Non riguarda un’emergenza o un ambito sensibile.'],['notExecutionOnly','Non ho già scelto: il problema è ancora decidere.'],['notSeekingRecommendation','Non sto cercando qualcuno che scelga al posto mio.']].map(([k,l])=>`<label class="choice"><input type="checkbox" data-compat="${k}" ${c[k]?'checked':''}><span>${l}</span></label>`).join('')}</div></section><section class="card"><label class="field"><span>Completa: “Devo scegliere se…”</span><input class="input" id="decision-title" maxlength="140" value="${esc(d.title)}" placeholder="es. frequentare il corso serale o quello online"></label><div class="stack" id="alternatives">${alts.map((a,i)=>altInput(a,i)).join('')}</div><button class="btn btn-secondary" id="add-alt" ${alts.length>=4?'disabled':''}>Aggiungi alternativa</button></section><div class="row"><button class="btn btn-primary" id="start-flow">Inizia il percorso</button><button class="btn btn-text" id="cancel-new">Annulla</button></div>`,{nav:false}); }
 renderCompatibility.bind=()=>{
@@ -96,7 +120,7 @@ function renderSaved(){const all=loadDecisions();return shell(`<h1 tabindex="-1"
 renderSaved.bind=()=>{bindDecisionCards();document.querySelector('#search').addEventListener('input',e=>{const q=e.target.value.toLowerCase();const filtered=loadDecisions().filter(d=>d.title.toLowerCase().includes(q));document.querySelector('#saved-list').innerHTML=filtered.length?filtered.map(decisionCard).join(''):'<div class="card empty"><p>Nessun risultato.</p></div>';bindDecisionCards();});};
 
 function renderData(){const all=loadDecisions();return shell(`<h1 tabindex="-1">Dati e privacy</h1><section class="card"><h2>Solo su questo dispositivo</h2><p>Non serve un account e il funzionamento principale non invia contenuti a un server.</p><p><strong>${all.length}</strong> decisioni salvate localmente.</p></section><section class="card"><h2>Backup</h2><p class="muted">Il backup contiene tutte le decisioni e serve per ripristinarle su un dispositivo compatibile.</p><div class="row"><button class="btn btn-primary" id="backup">Crea backup</button><label class="btn btn-secondary" for="restore-file">Ripristina backup</label><input class="hidden" id="restore-file" type="file" accept="application/json"></div></section><section class="card"><h2>Cancellazione</h2><p class="muted">Puoi eliminare tutti i contenuti locali. Senza backup, l’azione è irreversibile.</p><button class="btn btn-danger" id="delete-all">Elimina tutti i dati</button></section><section class="card muted"><h2>Limiti</h2><p>ClearChoice non fornisce consulenza e non è adatta a decisioni urgenti, mediche, legali, fiscali, finanziarie ad alto impatto o relative alla sicurezza.</p></section>`);}
-renderData.bind=()=>{document.querySelector('#backup').addEventListener('click',()=>{exportBackup(createBackupPayload());flash('Backup creato.');});document.querySelector('#restore-file').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{const payload=JSON.parse(await file.text());const result=restoreBackupPayload(payload);result.valid?flash('Dati ripristinati.'):flash(result.error);}catch{flash('Backup non valido.');}});document.querySelector('#delete-all').addEventListener('click',()=>{state.dialog={type:'delete-all'};render();bindDialog();});};
+renderData.bind=()=>{document.querySelector('#backup').addEventListener('click',()=>{exportBackup(createBackupPayload());flash('Backup creato.');});document.querySelector('#restore-file').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{const payload=JSON.parse(await file.text());const validation=validateBackupPayload(payload);if(!validation.valid){flash(validation.error);return;}state.dialog={type:'restore',payload};state.dialogReturnFocus='#backup';render();}catch{flash('Backup non valido.');}});document.querySelector('#delete-all').addEventListener('click',()=>{state.dialog={type:'delete-all'};state.dialogReturnFocus='#delete-all';render();});};
 
 render();
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}
