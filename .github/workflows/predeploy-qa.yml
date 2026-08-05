@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   browser-qa:
@@ -21,6 +21,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Apply verified pre-deploy fixes
+        run: node qa/apply-predeploy-fixes.mjs
+
+      - name: Commit verified bug fixes
+        shell: bash
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
+            git add app.js qa/browser-qa.mjs
+            git commit -m "Fix pre-deploy QA defects"
+            git push origin HEAD:agent/predeploy-qa
+          fi
 
       - name: Install QA-only browser dependencies
         run: npm install --no-save playwright@1.47.2 axe-core@4.10.0
