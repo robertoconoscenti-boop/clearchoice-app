@@ -43,7 +43,7 @@ function bindDialogA11y(){
   const focusables=[...dialog.querySelectorAll(selector)].filter(el=>!el.hidden && el.getClientRects().length);
   const first=focusables[0];
   const last=focusables[focusables.length-1];
-  requestAnimationFrame(()=>first?.focus());
+  first?.focus();
   dialog.addEventListener('keydown',event=>{
     if(event.key==='Escape'){ event.preventDefault(); closeDialog(); return; }
     if(event.key!=='Tab' || !first || !last)return;
