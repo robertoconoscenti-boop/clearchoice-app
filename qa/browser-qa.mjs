@@ -232,13 +232,15 @@ async function desktopMatrix() {
     const zero = await page.locator('text=0 decisioni salvate localmente.').count();
     if (!zero) throw new Error('Cancellazione totale non verificata.');
     await page.setInputFiles('#restore-file', backupPath);
-    await page.waitForTimeout(300);
+    await page.waitForSelector('[role="dialog"]');
+    const restoreTitle = await page.locator('#dialog-title').textContent();
+    const stillZero = await page.locator('text=0 decisioni salvate localmente.').count();
+    const restoreFocused = await page.evaluate(() => document.querySelector('[role="dialog"]')?.contains(document.activeElement));
+    if (!restoreTitle?.includes('Ripristinare questo backup') || !stillZero || !restoreFocused) throw new Error('Conferma di ripristino assente, tardiva o senza focus.');
+    await page.click('#confirm-restore');
     const restored = await page.locator('text=1 decisioni salvate localmente.').count();
     if (!restored) throw new Error('Ripristino non verificato.');
-    record('Backup, eliminazione e ripristino', 'Desktop 1440×900', true, 'Backup JSON scaricato, dati eliminati e ripristinati.');
-
-    const hasRestoreConfirmation = false;
-    if (!hasRestoreConfirmation) bug('CC-QA-004', 'Medium', 'Ripristino sostituisce i dati senza conferma', 'La selezione del file applica immediatamente il backup e sostituisce lo storage locale senza dialog di conferma.');
+    record('Backup, eliminazione e ripristino', 'Desktop 1440×900', true, 'Backup JSON scaricato; cancellazione e ripristino confermato completati.');
   } catch (error) {
     record('Backup, eliminazione e ripristino', 'Desktop 1440×900', false, error.message);
     bug('BACKUP-RESTORE', 'High', 'Backup o ripristino non funzionante', error.message);
