@@ -7,36 +7,20 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   browser-qa:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout candidate
+      - name: Checkout release candidate
         uses: actions/checkout@v4
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Apply verified pre-deploy fixes
-        run: |
-          node qa/apply-predeploy-fixes.mjs
-          node qa/apply-focus-timing-fix.mjs
-
-      - name: Commit verified bug fixes
-        shell: bash
-        run: |
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
-            git add app.js qa/browser-qa.mjs
-            git commit -m "Finalize pre-deploy dialog accessibility fix"
-            git push origin HEAD:agent/predeploy-qa
-          fi
 
       - name: Install QA-only browser dependencies
         run: npm install --no-save playwright@1.47.2 axe-core@4.10.0
