@@ -1,0 +1,47 @@
+name: Materialize tested application
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/materialize-app.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct exact app.js
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/app.part*.b64 | tr -d '\r\n' | base64 --decode > app.js
+          echo "b434f81fdc34e4281d8cb213f2685d00fa0b8f88188a9aaae24509d6a071be9b  app.js" | sha256sum --check --strict
+          test "$(wc -c < app.js)" -eq 28216
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Run syntax checks
+        run: npm run check
+
+      - name: Commit tested candidate and remove transfer files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf payload
+          rm -f .github/workflows/materialize-app.yml
+          rmdir .github/workflows 2>/dev/null || true
+          rmdir .github 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publish tested ClearChoice MVP"
+          git push origin HEAD:main
