@@ -23,7 +23,9 @@ jobs:
           node-version: '22'
 
       - name: Apply verified pre-deploy fixes
-        run: node qa/apply-predeploy-fixes.mjs
+        run: |
+          node qa/apply-predeploy-fixes.mjs
+          node qa/apply-focus-timing-fix.mjs
 
       - name: Commit verified bug fixes
         shell: bash
@@ -32,7 +34,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
             git add app.js qa/browser-qa.mjs
-            git commit -m "Fix pre-deploy QA defects"
+            git commit -m "Finalize pre-deploy dialog accessibility fix"
             git push origin HEAD:agent/predeploy-qa
           fi
 
